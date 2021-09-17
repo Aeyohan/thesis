@@ -30,3 +30,8 @@
 *.exe
 *.out
 *.app
+
+*.s
+*.jar
+*.bin
+*.hex
