@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "nrf_drv_usbd.h": "c",
+        "nrf_drv_usbd_errata.h": "c",
+        "nrfx_usbd.h": "c",
+        "app_error.h": "c",
+        "app_usbd_core.h": "c",
+        "app_usbd_cdc_acm.h": "c",
+        "app_usbd_cdc_desc.h": "c",
+        "nrf_cli_uart.h": "c",
+        "nrf_drv_uart.h": "c",
+        "nrfx.h": "c",
+        "app_timer.h": "c"
+    }
+}

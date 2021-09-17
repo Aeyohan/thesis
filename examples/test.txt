@@ -1,0 +1,4 @@
+
+nrfutil pkg generate --hw-version 52 --sd-req=0x00 --application C:\Users\Aeyohan\Documents\work\ENGG4811\code\examples\peripheral\usbd_cdc_acm\pca10056\blank\armgcc\_build\nrf52840_xxaa.hex --application-version 1 C:\Users\Aeyohan\Documents\work\ENGG4811\code\examples\peripheral\usbd_cdc_acm\pca10056\blank\armgcc\_build\nrf52840_xxaa.zip
+
+nrfutil dfu serial --package C:\Users\Aeyohan\Documents\work\ENGG4811\code\examples\peripheral\usbd_cdc_acm\pca10056\blank\armgcc\_build\nrf52840_xxaa.zip -p COM5

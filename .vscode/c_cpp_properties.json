@@ -1,0 +1,96 @@
+{
+    "env": {
+        "nrfSDK": "C:\\Users\\Aeyohan\\Downloads\\DeviceDownload\\nRF5SDK1702d674dde\\nRF5_SDK_17.0.2_d674dde"
+    },
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "windowsSdkVersion": "10.0.18362.0",
+            "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC/14.24.28314/bin/Hostx64/x64/cl.exe",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
+        },
+        {
+            "name": "ARMGCC",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/examples/project/open_bootloader/pca10056_usb_debug/config",
+                "${workspaceFolder}/examples/libraries/inc",
+                "${workspaceFolder}/examples/libraries/src",
+                "${nrfSDK}/components/**",
+                "${nrfSDK}/components",
+                // "${nrfSDK}/components/libraries/experimental_memobj",
+                "${nrfSDK}/components/libraries/experimental_section_vars",
+                "${nrfSDK}/modules/nrfx/mdk",
+                "${nrfSDK}/modules/nrfx/hal",
+                "${nrfSDK}/components/libraries/balloc",
+                // "${nrfSDK}/components/libraries/experimental_log",
+                // "${nrfSDK}/components/libraries/experimental_log/src",
+                "${nrfSDK}/components/libraries/delay",
+                "${nrfSDK}/integration/nrfx",
+                "${nrfSDK}/components/libraries/bsp",
+                "${nrfSDK}/components/drivers_nrf/nrf_soc_nosd",
+                "${nrfSDK}/components/libraries/strerror",
+                "${nrfSDK}/components/boards",
+                "${nrfSDK}/components/toolchain/cmsis/include",
+                "${nrfSDK}/modules/nrfx",
+                "${nrfSDK}/components/libraries/util",
+                "${nrfSDK}/components/libraries/fifo",
+                "${nrfSDK}/components/libraries/uart",
+                "${nrfSDK}/integration/nrfx/legacy",
+                "${nrfSDK}/components/libraries/delay",
+                "${nrfSDK}/modules/nrfx/drivers/include",
+                "${nrfSDK}/components/libraries/button",
+                "${nrfSDK}/components/libraries/scheduler",
+                "${nrfSDK}/components/libraries/timer",
+                "${nrfSDK}/components/libraries/usbd/**",
+                "${nrfSDK}/components/libraries/usbd/",
+                "${nrfSDK}/components/libraries/usbd/class/cdc/acm",
+                "${nrfSDK}/components/libraries/usbd/class/cdc/",
+                "${nrfSDK}/components/libraries/usbd/class/",
+                "${nrfSDK}/components/libraries/atomic_fifo",
+                "${nrfSDK}/components/libraries/atomic",
+                "${nrfSDK}/components/libraries/cli/**",
+                "${nrfSDK}/external/fprintf",
+                "${nrfSDK}/components/libraries/memobj",
+                "${nrfSDK}/components/libraries/pwr_mgmt",
+                "${nrfSDK}/components/libraries/queue",
+                "${nrfSDK}/components/libraries/ringbuf",
+                "${nrfSDK}/components/libraries/sortlist",
+                "${nrfSDK}/components/libraries/strerror",
+                "${nrfSDK}/components/libraries/memobj",
+                "${nrfSDK}/components/libraries/log",
+                "${nrfSDK}/components/libraries/log/src",
+                "${nrfSDK}/components/libraries/led_softblink",
+                "${nrfSDK}/modules/nrfx/soc/",
+                "${nrfSDK}/modules/nrfx/drivers/**",
+                "${nrfSDK}/external/segger_rtt",
+                "${nrfSDK}/external/utf_converter"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "BRD_EXP",
+                // "BSP_DEFINES_ONLY",
+                "CONFIG_GPIO_AS_PINRESET",
+                "FLOAT_ABI_HARD",
+                "NRF52840_XXAA",
+                "DCONFIG_NFCT_PINS_AS_GPIOS"
+            ],
+            "compilerPath": "C:\\Program Files (x86)\\GNU Tools ARM Embedded\\9 2019-q4-major\\bin\\arm-none-eabi-gcc.exe",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
