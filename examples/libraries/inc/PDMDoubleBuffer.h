@@ -22,7 +22,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DEFAULT_PDM_BUFFER_SIZE 512
+#define DEFAULT_PDM_BUFFER_SIZE 2048
+// was 512
 
 class PDMDoubleBuffer
 {

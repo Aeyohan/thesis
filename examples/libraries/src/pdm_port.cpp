@@ -65,8 +65,7 @@ PDMClass::~PDMClass()
 
 int PDMClass::begin(int channels, long sampleRate)
 {
-    NRF_LOG_INFO("PDM begin init");
-    NRF_LOG_FLUSH();
+    
   _channels = channels;
 
   // Enable high frequency oscillator if not already enabled
@@ -74,8 +73,7 @@ int PDMClass::begin(int channels, long sampleRate)
     NRF_CLOCK->TASKS_HFCLKSTART    = 1;
     while (NRF_CLOCK->EVENTS_HFCLKSTARTED == 0) { }
   }
-  NRF_LOG_INFO("Enabling high frequency oscillator");
-    NRF_LOG_FLUSH();
+  
 
   // configure the sample rate and channels
   switch (sampleRate) {
@@ -89,8 +87,7 @@ int PDMClass::begin(int channels, long sampleRate)
     default:
       return 0; // unsupported
   }
-  NRF_LOG_INFO("Configuring Sample rate");
-    NRF_LOG_FLUSH();
+  
 
   switch (channels) {
     case 2:
@@ -104,29 +101,24 @@ int PDMClass::begin(int channels, long sampleRate)
     default:
       return 0; // unsupported
   }
-  NRF_LOG_INFO("Configuring Channels");
-    NRF_LOG_FLUSH();
+  
 
   setGain(DEFAULT_PDM_GAIN);  
 
   // configure the I/O and mux
-  ret_code_t err_code;
     
     
-    NRF_LOG_INFO("initialising output pins");
-    NRF_LOG_FLUSH();
+    
 
 //   nrf_drv_gpiote_out_config_t out_config = GPIOTE_CONFIG_OUT_SIMPLE(false); // init low
   
     nrf_gpio_cfg_output(_clkPin);
 
-    NRF_LOG_INFO("initialising input pins");
-    NRF_LOG_FLUSH();
+    
   
   
     nrf_gpio_cfg_input(_dinPin, NRF_GPIO_PIN_PULLUP);
-    NRF_LOG_INFO("Enabling events");
-    NRF_LOG_FLUSH();
+    
 
     // nrf_drv_gpiote_in_event_enable(_dinPin, true);
   
@@ -182,12 +174,12 @@ void PDMClass::end()
 
   // unconfigure the I/O and un-mux
   nrf_pdm_psel_disconnect();
-  ret_code_t err_code;
-  nrf_drv_gpiote_in_config_t in_config = GPIOTE_CONFIG_IN_SENSE_TOGGLE(true);
-  in_config.pull = NRF_GPIO_PIN_PULLUP;
+  // ret_code_t err_code;
+  // nrf_drv_gpiote_in_config_t in_config = GPIOTE_CONFIG_IN_SENSE_TOGGLE(true);
+  // in_config.pull = NRF_GPIO_PIN_PULLUP;
 
-  err_code = nrf_drv_gpiote_in_init(_clkPin, &in_config, in_pin_handler);
-    APP_ERROR_CHECK(err_code);
+  // err_code = nrf_drv_gpiote_in_init(_clkPin, &in_config, in_pin_handler);
+  //   APP_ERROR_CHECK(err_code);
 }
 
 int PDMClass::available()
@@ -229,8 +221,6 @@ void PDMClass::setBufferSize(int bufferSize)
 
 void PDMClass::IrqHandler(bool halftranfer)
 {
-  NRF_LOG_INFO("irq_handler_tick");
-  NRF_LOG_FLUSH();
   if (nrf_pdm_event_check(NRF_PDM_EVENT_STARTED)) {
     nrf_pdm_event_clear(NRF_PDM_EVENT_STARTED);
 

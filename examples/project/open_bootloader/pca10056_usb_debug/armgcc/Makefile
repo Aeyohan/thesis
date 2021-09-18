@@ -55,11 +55,14 @@ SRC_FILES += \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_uart.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_ppi.c \
   $(SDK_ROOT)/components/drivers_nrf/nrf_soc_nosd/nrf_nvic.c \
   $(SDK_ROOT)/modules/nrfx/hal/nrf_nvmc.c \
   $(SDK_ROOT)/components/drivers_nrf/nrf_soc_nosd/nrf_soc.c \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_timer.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_ppi.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/prs/nrfx_prs.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_systick.c \
@@ -161,9 +164,10 @@ OPT = -Os -g3
 CFLAGS += $(OPT)
 CFLAGS += -DAPP_TIMER_V2
 CFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
-CFLAGS += -DBOARD_PCA10056
+CFLAGS += -DBRD_EXP
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DDEBUG_NRF
+CFLAGS += -DDEBUG
 CFLAGS += -DFLOAT_ABI_HARD
 CFLAGS += -DMBR_PRESENT
 CFLAGS += -DNRF52840_XXAA
@@ -216,6 +220,7 @@ LIB_FILES += -lc -lnosys -lm
 
 # Default target - first one defined
 default: nrf52840_xxaa_debug
+	copy /Y C:\Users\Aeyohan\Documents\work\ENGG4811\code\Thesis\thesis\examples\project\open_bootloader\pca10056_usb_debug\armgcc\_build\nrf52840_xxaa_debug.hex C:\Users\Aeyohan\Documents\work\ENGG4811\code\Thesis\thesis\examples\project\open_bootloader\pca10056_usb_debug\armgcc\_build\nrf52840_xxaa_pdm_int.hex
 
 # Print all targets that can be built
 help:

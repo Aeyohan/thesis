@@ -45,8 +45,9 @@
  * @brief Bootloader project main file for Open DFU over USB.
  *
  */
-
+#include "sdk_config.h"
 #include <stdint.h>
+#include <stdbool.h>
 #include "boards.h"
 // #include "nrf_mbr.h"
 // #include "nrf_bootloader.h"
@@ -75,11 +76,21 @@
 #include "app_usbd_serial_num.h"
 
 #include "bsp.h"
+
+#include "nrf.h"
+#include "nrf_gpiote.h"
+#include "nrf_gpio.h"
+#include "nrf_drv_ppi.h"
+#include "nrf_drv_timer.h"
+#include "nrf_drv_gpiote.h"
 // #include "bsp_cli.h"
 // #include "nrf_cli.h"
 // #include "nrf_cli_uart.h"
 
 #include "pdm_port.h"
+
+// #include "app_simple_timer.h"
+#include "nrf_drv_systick.h"
 
 #if NRF_CLI_ENABLED
 /**
@@ -116,6 +127,21 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
     NRF_LOG_ERROR("app_error_handler err_code:%d %s:%d", error_code, p_file_name, line_num);
     on_error();
 }
+
+void assert_nrf_callback(uint16_t line_num, const uint8_t * file_name)
+{
+    assert_info_t assert_info =
+    {
+        .line_num    = line_num,
+        .p_file_name = file_name,
+    };
+
+    NRF_LOG_ERROR("Error at: %s:%d", file_name, line_num);
+    app_error_fault_handler(NRF_FAULT_ID_SDK_ASSERT, 0, (uint32_t)(&assert_info));
+
+    UNUSED_VARIABLE(assert_info);
+}
+
 
 
 void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
@@ -267,23 +293,63 @@ static char m_tx_buffer[NRF_DRV_USBD_EPSIZE];
 static bool m_send_flag = 0;
 
 // buffer to read samples into, each sample is 16-bits
-short sampleBuffer[256];
+short sampleBuffer[1024]; // was 256
+#define AUDIO_SAMPLE_RATE 16000
+#define SAMPLE_DURATION 4
+#define MAX_SAMPLES SAMPLE_DURATION * AUDIO_SAMPLE_RATE
+#define TO_US (1000UL * 1000UL)
+short largeBuffer[MAX_SAMPLES];
+int largeSampleCount = 0;
+
 // number of samples read
 volatile int samplesRead;
+volatile bool readPending;
+
+typedef enum microphoneState {
+    MIC_OFF = 0,
+    MIC_INITIALISED = 1,
+    MIC_WAITING = 2,
+    MIC_RECORDING = 3,
+    MIC_DATA_READY = 4
+} microphoneState;
+
+microphoneState micState = MIC_OFF;
+void button_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action);
+void button_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+    readPending = true;
+}
+
+static void led_blinking_setup()
+{
+    ret_code_t err_code;
+    nrf_drv_gpiote_out_config_t ledConfig = GPIOTE_CONFIG_OUT_SIMPLE(false);
+    err_code = nrf_drv_gpiote_out_init(LED_1, &ledConfig);
+    APP_ERROR_CHECK(err_code);
+
+    nrf_drv_gpiote_in_config_t buttonConfig = GPIOTE_CONFIG_IN_SENSE_HITOLO(true);
+    buttonConfig.pull = NRF_GPIO_PIN_PULLUP;
+    err_code = nrf_drv_gpiote_in_init(BUTTON_1, &buttonConfig, button_pin_handler);
+    APP_ERROR_CHECK(err_code);
+
+    nrf_drv_gpiote_in_event_enable(BUTTON_1, true);
+}
 
 void onPDMdata() {
-    NRF_LOG_INFO("Querying PDM");
-    NRF_LOG_FLUSH();
+    
     // query the number of bytes available
     int bytesAvailable = PDM.available();
-    NRF_LOG_INFO("Reading PDM");
-    NRF_LOG_FLUSH();
+
     // read into the sample buffer
     PDM.read(sampleBuffer, bytesAvailable);
-    NRF_LOG_INFO("PDM Read");
-    NRF_LOG_FLUSH();
+
     // 16-bit, 2 bytes per sample
     samplesRead = bytesAvailable / 2;
+}
+
+void queueRead(void);
+
+void queueRead(void) {
+    readPending = true;
 }
 
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
@@ -375,11 +441,17 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
 static void bsp_event_callback(bsp_event_t ev)
 {
     ret_code_t ret;
+    NRF_LOG_INFO("BSP Event '%d'", (unsigned int) ev);
+    NRF_LOG_FLUSH();
     switch ((unsigned int)ev)
     {
         case CONCAT_2(BSP_EVENT_KEY_, BTN_CDC_DATA_SEND):
         {
             m_send_flag = 1;
+            nrf_drv_gpiote_out_toggle(LED_1);
+            readPending = true;
+            NRF_LOG_INFO("Button Push");
+            NRF_LOG_FLUSH();
             break;
         }
         
@@ -398,6 +470,13 @@ static void bsp_event_callback(bsp_event_t ev)
             break;
         }
 
+        // case BSP_EVENT_KEY_0 :
+        //     nrf_drv_gpiote_out_toggle(LED_1);
+        //     readPending = true;
+        //     NRF_LOG_INFO("Button Push");
+        //     NRF_LOG_FLUSH();
+        //     break;
+
         default:
             return; // no implementation needed
     }
@@ -405,13 +484,13 @@ static void bsp_event_callback(bsp_event_t ev)
 
 static void init_bsp(void)
 {
-    ret_code_t ret;
-    ret = bsp_init(BSP_INIT_BUTTONS, bsp_event_callback);
-    APP_ERROR_CHECK(ret);
+    // ret_code_t ret;
+    // ret = bsp_init(BSP_INIT_BUTTONS, bsp_event_callback);
+    // APP_ERROR_CHECK(ret);
     
-    UNUSED_RETURN_VALUE(bsp_event_to_button_action_assign(BTN_CDC_DATA_SEND,
-                                                          BSP_BUTTON_ACTION_RELEASE,
-                                                          BTN_CDC_DATA_KEY_RELEASE));
+    // UNUSED_RETURN_VALUE(bsp_event_to_button_action_assign(BTN_CDC_DATA_SEND,
+                                                        //   BSP_BUTTON_ACTION_RELEASE,
+                                                        //   BTN_CDC_DATA_KEY_RELEASE));
     
     /* Configure LEDs */
     bsp_board_init(BSP_INIT_LEDS);
@@ -437,6 +516,7 @@ static void init_cli(void)
 int main(void)
 {
     uint32_t ret_val;
+    nrfx_systick_state_t systick;
 
     // Must happen before flash protection is applied, since it edits a protected page.
     // nrf_bootloader_mbr_addrs_populate();
@@ -481,8 +561,9 @@ int main(void)
 
     NRF_LOG_FLUSH();
     bsp_board_init(BSP_INIT_LEDS);
+    bsp_board_init(BSP_INIT_BUTTONS);
 
-    bsp_board_led_invert(BSP_BOARD_LED_1);
+    bsp_board_led_invert(BSP_BOARD_LED_0);
 
     // ret_val = nrf_bootloader_init(dfu_observer);
     // APP_ERROR_CHECK(ret_val);
@@ -514,39 +595,150 @@ int main(void)
     NRF_LOG_FLUSH();
     // configure the data receive callback
     PDM.onReceive(onPDMdata);
+    micState = MIC_INITIALISED;
     // optionally set the gain, defaults to 20
     // PDM.setGain(30);
-    if (!PDM.begin(1, 16000)) {
-        NRF_LOG_INFO("Failed to start PDM!");
-        NRF_LOG_FLUSH();
-    }
+    
+    
     NRF_LOG_INFO("Initialised PDM");
     NRF_LOG_FLUSH();
+
+    NRF_LOG_INFO("preparing button register");
+    NRF_LOG_FLUSH();
+
+    ret_code_t err_code;
+
+    err_code = nrf_drv_ppi_init();
+    APP_ERROR_CHECK(err_code);
+    NRF_LOG_INFO("Initialised Peripheral interconnect");
+    NRF_LOG_FLUSH();
+    if (!nrf_drv_gpiote_is_init()) {
+        NRF_LOG_INFO("gpio is not initialised, initialising");
+        NRF_LOG_FLUSH();
+        
+        err_code = nrf_drv_gpiote_init();
+        APP_ERROR_CHECK(err_code);
+        NRF_LOG_INFO("Initialised GPIOTE driver");
+    NRF_LOG_FLUSH();
     
+    }
+    
+    NRF_LOG_INFO("Starting button event config");
+    NRF_LOG_FLUSH();
+
+    led_blinking_setup();
+    NRF_LOG_INFO("initialising systick");
+    NRF_LOG_FLUSH();
+    /* Init systick driver */
+    nrf_drv_systick_init();
+    nrfx_systick_get(&systick);
+
+    NRF_LOG_INFO("initialisation complete");
+    NRF_LOG_FLUSH();
     uint8_t counter = 0;
+    uint32_t delay1MS = 1000;
+    uint64_t longerCounter = 0;
+    uint64_t msElapsed = 0; // increments when recording ~ every ms
+    uint16_t durationRecord = 1000;
+    
+
     while (true) {
         // NRF_LOG_INFO("Logging loop %i.", counter++);
         if (counter++ == 0) {
-            bsp_board_led_invert(BSP_BOARD_LED_1);
-            NRF_LOG_INFO("tick");
+            bsp_board_led_invert(BSP_BOARD_LED_0);
+            // NRF_LOG_INFO("tick");
             NRF_LOG_FLUSH();
         }
 
-        NRF_LOG_INFO("Samples: %d", samplesRead);
-        NRF_LOG_FLUSH();
+        if(longerCounter++ == 0)
+        {
+            
+            static int  frame_counter;
 
-        // read PDM sample and write to RTT viewer
-        if (samplesRead) {
+            size_t size = sprintf(m_tx_buffer, "Hello USB CDC FA demo: %u\r\n", frame_counter);
 
-            // print samples to the serial monitor or plotter
-            for (int i = 0; i < samplesRead; i++) {
-                NRF_LOG_INFO("sample %d", sampleBuffer[i]);
+            ret_val = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, size);
+            if (ret_val == NRF_SUCCESS)
+            {
+                ++frame_counter;
+            }
+        }
+
+        if (readPending) {
+            NRF_LOG_INFO("record button pushed");
+            NRF_LOG_FLUSH();
+            // read PDM sample and write to RTT viewer
+            if (micState == MIC_INITIALISED) {
+                if (!PDM.begin(1, 16000)) {
+                    NRF_LOG_INFO("Failed to start PDM!");
+                    NRF_LOG_FLUSH();
+                } else {
+                    NRF_LOG_INFO("Started Recording");
+                    NRF_LOG_FLUSH();
+                    micState = MIC_RECORDING;
+                    nrfx_systick_get(&systick);
+                    durationRecord = 1000;
+                    msElapsed = 0;
+                }
+            } else {
+                NRF_LOG_INFO("Mic busy");
                 NRF_LOG_FLUSH();
             }
+            readPending = false;
+        }    
 
-            // clear the read count
-            samplesRead = 0;
+        if (micState == MIC_RECORDING) {
+            //  check if the recording period has elapsed
+
+            if (nrfx_systick_test(&systick, delay1MS)) {
+                msElapsed++;
+                nrfx_systick_get(&systick);
+            }
+            if (msElapsed > durationRecord) {
+                NRF_LOG_INFO("Recorded %ds", durationRecord/1000);
+                NRF_LOG_FLUSH();
+                durationRecord += 1000;
+            }
+
+            if (msElapsed > SAMPLE_DURATION * 1000) {
+                micState = MIC_DATA_READY;
+
+            }
+
+
+            // copy over any samples 
+
+            if (samplesRead) {
+
+                // print samples to the serial monitor or plotter
+                NRF_LOG_INFO("captured %d samples", samplesRead);
+                NRF_LOG_FLUSH();
+                for (int i = 0; i < samplesRead && largeSampleCount + i < MAX_SAMPLES; i++) {
+                    largeBuffer[largeSampleCount++] = sampleBuffer[i];
+                }
+
+                // clear the read count
+                samplesRead = 0;    
+            }    
         }
+
+        if (micState == MIC_DATA_READY) {
+            // To-Do  write to SD
+            
+            // for now write it to console
+            // for (int i = 0; i < largeSampleCount; i++) {
+                // NRF_LOG_INFO("%d",largeBuffer[i]);
+            // }
+            NRF_LOG_INFO("Logged %d samples", largeSampleCount);
+            NRF_LOG_FLUSH();
+            // start next recording at 0
+            largeSampleCount = 0;
+            micState = MIC_INITIALISED;
+            PDM.end();
+        }
+
+        
+        
         
         
         // if(m_send_flag)
@@ -564,6 +756,9 @@ int main(void)
         // }
     }
 }
+
+
+
 
 /**
  * @}
