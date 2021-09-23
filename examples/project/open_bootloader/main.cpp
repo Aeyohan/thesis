@@ -104,6 +104,32 @@ NRF_CLI_DEF(m_cli_uart,
             4);
 #endif
 
+//=============== Function Prototypes ===============
+uint8_t init_usb(void);
+uint8_t init_pdm(void);
+uint8_t init_button(void);
+
+uint8_t pdm_tick(void);
+//=============================================================
+
+// ============== Defines =============
+// PDM
+#define DELAY_1_MS 1000
+
+
+// ====================================
+
+// ===============Global variables  ===========
+// (to be part of a driver)
+
+// PDM
+uint64_t msElapsed = 0; // increments when recording ~ every ms
+uint16_t durationRecord = 1000;
+uint64_t longerCounter = 0;
+nrfx_systick_state_t systick;
+
+// ==================
+
 /* Timer used to blink LED on DFU progress. */
 // APP_TIMER_DEF(m_dfu_progress_led_timer);
 
@@ -513,11 +539,69 @@ static void init_cli(void)
 }
 #endif
 
-int main(void)
-{
+int main(void) {
     uint32_t ret_val;
-    nrfx_systick_state_t systick;
 
+    
+
+    NRF_LOG_INFO("initialising systick");
+    NRF_LOG_FLUSH();
+    
+    /* Init systick driver */
+    nrf_drv_systick_init();
+    nrfx_systick_get(&systick);
+
+    NRF_LOG_INFO("initialisation complete");
+    NRF_LOG_FLUSH();
+    uint8_t counter = 0;
+    
+
+    while (true) {
+        // NRF_LOG_INFO("Logging loop %i.", counter++);
+        if (counter++ == 0) {
+            bsp_board_led_invert(BSP_BOARD_LED_0);
+            // NRF_LOG_INFO("tick");
+            NRF_LOG_FLUSH();
+        }
+
+        if(longerCounter++ == 0)
+        {
+            
+            static int  frame_counter;
+
+            size_t size = sprintf(m_tx_buffer, "Hello USB CDC FA demo: %u\r\n", frame_counter);
+
+            ret_val = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, size);
+            if (ret_val == NRF_SUCCESS)
+            {
+                ++frame_counter;
+            }
+        }
+
+        pdm_tick();
+
+        
+        
+        
+        
+        // if(m_send_flag)
+        // {
+        //     bsp_board_led_invert(BSP_BOARD_LED_1);
+        //     static int  frame_counter;
+
+        //     size_t size = sprintf(m_tx_buffer, "Hello USB CDC FA demo: %u\r\n", frame_counter);
+
+        //     ret_val = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, size);
+        //     if (ret_val == NRF_SUCCESS)
+        //     {
+        //         ++frame_counter;
+        //     }
+        // }
+    }
+}
+
+uint8_t init_usb(void) {
+    uint32_t ret_val;
     // Must happen before flash protection is applied, since it edits a protected page.
     // nrf_bootloader_mbr_addrs_populate();
 
@@ -561,7 +645,6 @@ int main(void)
 
     NRF_LOG_FLUSH();
     bsp_board_init(BSP_INIT_LEDS);
-    bsp_board_init(BSP_INIT_BUTTONS);
 
     bsp_board_led_invert(BSP_BOARD_LED_0);
 
@@ -590,7 +673,10 @@ int main(void)
         app_usbd_enable();
         app_usbd_start();
     }
+    return 0;
+}
 
+uint8_t init_pdm(void) {
     NRF_LOG_INFO("Configuring PDM");
     NRF_LOG_FLUSH();
     // configure the data receive callback
@@ -602,6 +688,11 @@ int main(void)
     
     NRF_LOG_INFO("Initialised PDM");
     NRF_LOG_FLUSH();
+    return 0;
+}
+
+uint8_t init_button(void) {
+    bsp_board_init(BSP_INIT_BUTTONS);
 
     NRF_LOG_INFO("preparing button register");
     NRF_LOG_FLUSH();
@@ -627,43 +718,16 @@ int main(void)
     NRF_LOG_FLUSH();
 
     led_blinking_setup();
-    NRF_LOG_INFO("initialising systick");
-    NRF_LOG_FLUSH();
-    /* Init systick driver */
-    nrf_drv_systick_init();
-    nrfx_systick_get(&systick);
+    return 0;
+}
 
-    NRF_LOG_INFO("initialisation complete");
-    NRF_LOG_FLUSH();
-    uint8_t counter = 0;
-    uint32_t delay1MS = 1000;
-    uint64_t longerCounter = 0;
-    uint64_t msElapsed = 0; // increments when recording ~ every ms
-    uint16_t durationRecord = 1000;
+uint8_t init_sd(void) {
+
+
+}
+
+uint8_t pdm_tick(void) {
     
-
-    while (true) {
-        // NRF_LOG_INFO("Logging loop %i.", counter++);
-        if (counter++ == 0) {
-            bsp_board_led_invert(BSP_BOARD_LED_0);
-            // NRF_LOG_INFO("tick");
-            NRF_LOG_FLUSH();
-        }
-
-        if(longerCounter++ == 0)
-        {
-            
-            static int  frame_counter;
-
-            size_t size = sprintf(m_tx_buffer, "Hello USB CDC FA demo: %u\r\n", frame_counter);
-
-            ret_val = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, size);
-            if (ret_val == NRF_SUCCESS)
-            {
-                ++frame_counter;
-            }
-        }
-
         if (readPending) {
             NRF_LOG_INFO("record button pushed");
             NRF_LOG_FLUSH();
@@ -690,7 +754,7 @@ int main(void)
         if (micState == MIC_RECORDING) {
             //  check if the recording period has elapsed
 
-            if (nrfx_systick_test(&systick, delay1MS)) {
+            if (nrfx_systick_test(&systick, DELAY_1_MS)) {
                 msElapsed++;
                 nrfx_systick_get(&systick);
             }
@@ -737,16 +801,9 @@ int main(void)
             PDM.end();
         }
 
-        
-        
-        
-        
-        // if(m_send_flag)
-        // {
-        //     bsp_board_led_invert(BSP_BOARD_LED_1);
-        //     static int  frame_counter;
+        return 0;
+}
 
-        //     size_t size = sprintf(m_tx_buffer, "Hello USB CDC FA demo: %u\r\n", frame_counter);
 
         //     ret_val = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, size);
         //     if (ret_val == NRF_SUCCESS)
