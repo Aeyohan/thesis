@@ -25,6 +25,11 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/crypto/backend/cc310_bl/cc310_bl_backend_init.c \
   $(SDK_ROOT)/components/libraries/crypto/backend/cc310_bl/cc310_bl_backend_shared.c \
   $(SDK_ROOT)/components/libraries/util/app_error_weak.c \
+  $(SDK_ROOT)/components/libraries/util/app_error.c \
+  $(SDK_ROOT)/components/libraries/util/app_error_handler_gcc.c \
+  $(SDK_ROOT)/components/libraries/fifo/app_fifo.c \
+  $(SDK_ROOT)/components/libraries/sdcard/app_sdcard.c \
+  $(SDK_ROOT)/components/libraries/uart/app_uart_fifo.c \
   $(SDK_ROOT)/components/libraries/scheduler/app_scheduler.c \
   $(SDK_ROOT)/components/libraries/timer/app_timer2.c \
   $(SDK_ROOT)/components/libraries/usbd/app_usbd.c \
@@ -42,6 +47,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/atomic_fifo/nrf_atfifo.c \
   $(SDK_ROOT)/components/libraries/atomic/nrf_atomic.c \
   $(SDK_ROOT)/components/libraries/balloc/nrf_balloc.c \
+  $(SDK_ROOT)/components/libraries/block_dev/sdc/nrf_block_dev_sdc.c \
   $(SDK_ROOT)/external/fprintf/nrf_fprintf.c \
   $(SDK_ROOT)/external/fprintf/nrf_fprintf_format.c \
   $(SDK_ROOT)/components/libraries/fstorage/nrf_fstorage.c \
@@ -54,6 +60,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/slip/slip.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_spi.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_uart.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_ppi.c \
   $(SDK_ROOT)/components/drivers_nrf/nrf_soc_nosd/nrf_nvic.c \
@@ -61,6 +68,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/drivers_nrf/nrf_soc_nosd/nrf_soc.c \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_spim.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_timer.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_ppi.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
@@ -72,6 +80,8 @@ SRC_FILES += \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \
+  $(SDK_ROOT)/external/fatfs/port/diskio_blkdev.c \
+  $(SDK_ROOT)/external/fatfs/src/ff.c \
   $(SDK_ROOT)/external/nano-pb/pb_common.c \
   $(SDK_ROOT)/external/nano-pb/pb_decode.c \
   $(SDK_ROOT)/external/utf_converter/utf.c \
@@ -88,6 +98,8 @@ SRC_FILES += \
 
 # Include folders common to all targets
 INC_FOLDERS += \
+  $(SDK_ROOT)/components \
+  $(SDK_ROOT)/external/fatfs/port \
   $(SDK_ROOT)/external/nrf_oberon/include \
   $(SDK_ROOT)/modules/nrfx/drivers/include \
   $(SDK_ROOT)/components/libraries/crypto/backend/micro_ecc \
@@ -127,6 +139,11 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/crypto \
   $(SDK_ROOT)/components/libraries/bsp \
   ../config \
+  $(SDK_ROOT)/external/protothreads \
+  $(SDK_ROOT)/external/protothreads/pt-1.4 \
+  $(SDK_ROOT)/components/libraries/block_dev/sdc \
+  $(SDK_ROOT)/components/libraries/block_dev \
+  $(SDK_ROOT)/components/libraries/sdcard \
   $(SDK_ROOT)/components/libraries/crypto/backend/optiga \
   $(SDK_ROOT)/components/libraries/scheduler \
   $(SDK_ROOT)/components/libraries/slip \
@@ -137,6 +154,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/balloc \
   $(SDK_ROOT)/components/libraries/atomic_fifo \
   $(PROJ_DIR) \
+  $(SDK_ROOT)/components/libraries/fifo \
   $(SDK_ROOT)/components/libraries/sortlist \
   $(SDK_ROOT)/external/utf_converter \
   $(SDK_ROOT)/components/libraries/crypto/backend/nrf_sw \
@@ -146,6 +164,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/queue \
   $(SDK_ROOT)/components/libraries/mutex \
   $(SDK_ROOT)/components/libraries/ringbuf \
+  $(SDK_ROOT)/external/fatfs/src \
   $(SDK_ROOT)/components/libraries/button \
   $(SDK_ROOT)/components/libraries/pwr_mgmt \
   $(PROJ_DIR)/../../libraries/inc \

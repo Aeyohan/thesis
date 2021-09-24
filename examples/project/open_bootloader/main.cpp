@@ -92,6 +92,10 @@
 // #include "app_simple_timer.h"
 #include "nrf_drv_systick.h"
 
+#include "ff.h"
+#include "diskio_blkdev.h"
+#include "nrf_block_dev_sdc.h"
+
 #if NRF_CLI_ENABLED
 /**
  * @brief CLI interface over UART
@@ -108,14 +112,38 @@ NRF_CLI_DEF(m_cli_uart,
 uint8_t init_usb(void);
 uint8_t init_pdm(void);
 uint8_t init_button(void);
+uint8_t init_sd(void);
 
 uint8_t pdm_tick(void);
+
+static void fatfs_example(void);
+uint8_t sd_prepare_file(void);
+void log_filename(TCHAR* fname);
+bool bcd_inc(char* character);
+uint16_t get_str_size(int16_t* values, uint8_t size);
+uint8_t log_values(int16_t* buffer, uint16_t size);
+void wait_for_sd_idle(void);
 //=============================================================
 
 // ============== Defines =============
+#define STATUS_OK 0
+
 // PDM
 #define DELAY_1_MS 1000
 
+// SD
+#define FILE_NAME   "NORDIC.TXT"
+#define TEST_STRING "SD card example."
+
+#define SDC_SCK_PIN     28    ///< SDC serial clock (SCK) pin.
+#define SDC_MOSI_PIN    31  ///< SDC serial data in (DI) pin.
+#define SDC_MISO_PIN    2  ///< SDC serial data out (DO) pin.
+#define SDC_CS_PIN      20  ///< SDC chip select (CS) pin.
+#define FILENAME_LEN 13
+
+#define CHAR_OFFSET 48
+#define LOG_BUFFER_SIZE 512
+#define FILE_HEADER "value"
 
 // ====================================
 
@@ -128,31 +156,63 @@ uint16_t durationRecord = 1000;
 uint64_t longerCounter = 0;
 nrfx_systick_state_t systick;
 
+nrfx_systick_state_t delayTick;
+uint16_t msCount = 0;
+
+// SD
+NRF_BLOCK_DEV_SDC_DEFINE(
+        m_block_dev_sdc,
+        NRF_BLOCK_DEV_SDC_CONFIG(
+                SDC_SECTOR_SIZE,
+                APP_SDCARD_CONFIG(SDC_MOSI_PIN, SDC_MISO_PIN, SDC_SCK_PIN, SDC_CS_PIN)
+         ),
+         NFR_BLOCK_DEV_INFO_CONFIG("Nordic", "SDC", "1.00")
+);
+
+static FATFS fs;
+static DIR dir;
+static FILINFO fno;
+static FIL file;
+
+uint32_t bytes_written;
+FRESULT ff_result;
+DSTATUS disk_state = STA_NOINIT;
+bool sdReady = false;
+
+uint8_t fileCounter = 0;
+char logFileName[16] = "logs/log000.txt";
+
+char sdLogBuffer[LOG_BUFFER_SIZE];
+bool skipped;
+uint16_t samplesToSkip;
+
+
+
 // ==================
 
 /* Timer used to blink LED on DFU progress. */
 // APP_TIMER_DEF(m_dfu_progress_led_timer);
 
-static void on_error(void)
-{
-    NRF_LOG_FINAL_FLUSH();
+// static void on_error(void)
+// {
+//     NRF_LOG_FINAL_FLUSH();
 
-#if NRF_MODULE_ENABLED(NRF_LOG_BACKEND_RTT)
-    // To allow the buffer to be flushed by the host.
-    nrf_delay_ms(100);
-#endif
-#ifdef NRF_DFU_DEBUG_VERSION
-    NRF_BREAKPOINT_COND;
-#endif
-    NVIC_SystemReset();
-}
+// #if NRF_MODULE_ENABLED(NRF_LOG_BACKEND_RTT)
+//     // To allow the buffer to be flushed by the host.
+//     nrf_delay_ms(100);
+// #endif
+// #ifdef NRF_DFU_DEBUG_VERSION
+//     NRF_BREAKPOINT_COND;
+// #endif
+//     NVIC_SystemReset();
+// }
 
 
-void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p_file_name)
-{
-    NRF_LOG_ERROR("app_error_handler err_code:%d %s:%d", error_code, p_file_name, line_num);
-    on_error();
-}
+// void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p_file_name)
+// {
+//     NRF_LOG_ERROR("app_error_handler err_code:%d %s:%d", error_code, p_file_name, line_num);
+//     on_error();
+// }
 
 void assert_nrf_callback(uint16_t line_num, const uint8_t * file_name)
 {
@@ -170,18 +230,18 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * file_name)
 
 
 
-void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
-{
-    NRF_LOG_ERROR("Received a fault! id: 0x%08x, pc: 0x%08x, info: 0x%08x", id, pc, info);
-    on_error();
-}
+// void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
+// {
+//     NRF_LOG_ERROR("Received a fault! id: 0x%08x, pc: 0x%08x, info: 0x%08x", id, pc, info);
+//     on_error();
+// }
 
 
-void app_error_handler_bare(uint32_t error_code)
-{
-    NRF_LOG_ERROR("Received an error: 0x%08x!", error_code);
-    on_error();
-}
+// void app_error_handler_bare(uint32_t error_code)
+// {
+//     NRF_LOG_ERROR("Received an error: 0x%08x!", error_code);
+//     on_error();
+// }
 
 
 // static void dfu_progress_led_timeout_handler(void * p_context)
@@ -476,6 +536,8 @@ static void bsp_event_callback(bsp_event_t ev)
             m_send_flag = 1;
             nrf_drv_gpiote_out_toggle(LED_1);
             readPending = true;
+            nrfx_systick_get(&delayTick);
+            msCount = 0;
             NRF_LOG_INFO("Button Push");
             NRF_LOG_FLUSH();
             break;
@@ -542,7 +604,20 @@ static void init_cli(void)
 int main(void) {
     uint32_t ret_val;
 
-    
+    if (init_usb() != STATUS_OK) {
+        NRF_LOG_INFO("USB failed to init");
+        NRF_LOG_FLUSH();    
+    }
+
+    if (init_pdm() != STATUS_OK) {
+        NRF_LOG_INFO("PDM failed to init");
+        NRF_LOG_FLUSH();  
+    }
+
+    if (init_button() != STATUS_OK) {
+        NRF_LOG_INFO("Button and peripheral failed to init");
+        NRF_LOG_FLUSH();  
+    }
 
     NRF_LOG_INFO("initialising systick");
     NRF_LOG_FLUSH();
@@ -554,6 +629,15 @@ int main(void) {
     NRF_LOG_INFO("initialisation complete");
     NRF_LOG_FLUSH();
     uint8_t counter = 0;
+    
+    // fatfs_example();
+    
+    if (init_sd() != STATUS_OK) {
+        NRF_LOG_INFO("SD initialisation failed to init, check SD card is inserted");
+        NRF_LOG_FLUSH();
+    }
+
+    // sd_prepare_file();
     
 
     while (true) {
@@ -722,66 +806,130 @@ uint8_t init_button(void) {
 }
 
 uint8_t init_sd(void) {
+    // Initialize FATFS disk I/O interface by providing the block device.
+    static diskio_blkdev_t drives[] =
+    {
+            DISKIO_BLOCKDEV_CONFIG(NRF_BLOCKDEV_BASE_ADDR(m_block_dev_sdc, block_dev), NULL)
+    };
 
+    diskio_blockdev_register(drives, ARRAY_SIZE(drives));
 
+    NRF_LOG_INFO("Initializing disk 0 (SDC)...");
+    for (uint32_t retries = 3; retries && disk_state; --retries)
+    {
+        disk_state = disk_initialize(0);
+    }
+    if (disk_state)
+    {
+        NRF_LOG_INFO("Disk initialization failed. %d. %d", disk_state, disk_status(0));
+        return 1;
+    }
+
+    uint32_t blocks_per_mb = (1024uL * 1024uL) / m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_size;
+    uint32_t capacity = m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_count / blocks_per_mb;
+    NRF_LOG_INFO("Capacity: %d MB", capacity);
+
+    NRF_LOG_INFO("Mounting volume...");
+    ff_result = f_mount(&fs, "", 1);
+    if (ff_result)
+    {
+        NRF_LOG_INFO("Mount failed. %d.", ff_result);
+        return 1;
+    }
+    return 0;
 }
 
 uint8_t pdm_tick(void) {
     
         if (readPending) {
-            NRF_LOG_INFO("record button pushed");
-            NRF_LOG_FLUSH();
-            // read PDM sample and write to RTT viewer
-            if (micState == MIC_INITIALISED) {
-                if (!PDM.begin(1, 16000)) {
-                    NRF_LOG_INFO("Failed to start PDM!");
-                    NRF_LOG_FLUSH();
-                } else {
-                    NRF_LOG_INFO("Started Recording");
-                    NRF_LOG_FLUSH();
-                    micState = MIC_RECORDING;
-                    nrfx_systick_get(&systick);
-                    durationRecord = 1000;
-                    msElapsed = 0;
-                }
-            } else {
-                NRF_LOG_INFO("Mic busy");
-                NRF_LOG_FLUSH();
+            if (nrfx_systick_test(&delayTick, DELAY_1_MS)) {
+                msCount++;
+                nrfx_systick_get(&delayTick);
+                nrf_drv_gpiote_out_toggle(LED_1);
             }
-            readPending = false;
+
+            if (msCount > 1500) { // wait 500ms after the button has been pushed
+                NRF_LOG_INFO("record button pushed");
+                NRF_LOG_FLUSH();
+                // read PDM sample and write to RTT viewer
+                if (micState == MIC_INITIALISED) {
+                    if (!PDM.begin(1, 16000)) {
+                        NRF_LOG_INFO("Failed to start PDM!");
+                        NRF_LOG_FLUSH();
+                    } else {
+                        NRF_LOG_INFO("Started Recording");
+                        NRF_LOG_FLUSH();
+                        micState = MIC_RECORDING;
+                        nrfx_systick_get(&systick);
+                        durationRecord = 1000;
+                        msElapsed = 0;
+                    }
+                } else {
+                    NRF_LOG_INFO("Mic busy");
+                    NRF_LOG_FLUSH();
+                }
+                readPending = false;
+                skipped = false;
+                samplesToSkip = 24000;
+                nrf_drv_gpiote_out_clear(LED_1);
+            }
         }    
 
         if (micState == MIC_RECORDING) {
             //  check if the recording period has elapsed
+            if (skipped) {
+                if (nrfx_systick_test(&systick, DELAY_1_MS)) {
+                    msElapsed++;
+                    nrfx_systick_get(&systick);
+                }
+                if (msElapsed > durationRecord) {
+                    NRF_LOG_INFO("Recorded %ds", durationRecord/1000);
+                    NRF_LOG_FLUSH();
+                    durationRecord += 1000;
+                }
 
-            if (nrfx_systick_test(&systick, DELAY_1_MS)) {
-                msElapsed++;
-                nrfx_systick_get(&systick);
-            }
-            if (msElapsed > durationRecord) {
-                NRF_LOG_INFO("Recorded %ds", durationRecord/1000);
-                NRF_LOG_FLUSH();
-                durationRecord += 1000;
-            }
+                if (msElapsed > SAMPLE_DURATION * 1000) {
+                    micState = MIC_DATA_READY;
 
-            if (msElapsed > SAMPLE_DURATION * 1000) {
-                micState = MIC_DATA_READY;
-
+                }
             }
+            
 
 
             // copy over any samples 
 
             if (samplesRead) {
-
-                // print samples to the serial monitor or plotter
-                NRF_LOG_INFO("captured %d samples", samplesRead);
-                NRF_LOG_FLUSH();
-                for (int i = 0; i < samplesRead && largeSampleCount + i < MAX_SAMPLES; i++) {
-                    largeBuffer[largeSampleCount++] = sampleBuffer[i];
+                if (skipped) {
+                    // print samples to the serial monitor or plotter
+                    // NRF_LOG_INFO("captured %d samples", samplesRead);
+                    NRF_LOG_FLUSH();
+                    uint16_t limit = MAX_SAMPLES - largeSampleCount;
+                    if (samplesRead < limit) {
+                        limit = samplesRead;
+                    }
+                    short* smallPtr = &sampleBuffer[0];
+                    short* largePtr = &largeBuffer[largeSampleCount];
+                    memcpy(largePtr, smallPtr, sizeof(short) * limit);
+                    largeSampleCount += limit;
+                    // for (int i = 0; i < samplesRead && largeSampleCount + 1 < MAX_SAMPLES; i++) {
+                    //     largeBuffer[largeSampleCount++] = sampleBuffer[i];
+                    //     NRF_LOG_INFO("value: %d", sampleBuffer[i]);
+                    // }
+                    // NRF_LOG_INFO("sBuf: %d, lBuf %d", sampleBuffer[0], largeBuffer[0]);
+                    // NRF_LOG_INFO("sBuf: %d, lBuf %d", sampleBuffer[10], largeBuffer[10]);
+                    // NRF_LOG_INFO("sBuf: %d, lBuf %d", sampleBuffer[20], largeBuffer[20]);
+                    // NRF_LOG_INFO("sBuf: %d, lBuf %d", sampleBuffer[50], largeBuffer[50]);
+                    // NRF_LOG_INFO("sBuf: %d, lBuf %d", sampleBuffer[100], largeBuffer[100]);
+                    // clear the read count
+                } else {
+                    largeSampleCount += samplesRead;
+                    if (largeSampleCount >= samplesToSkip) {
+                        skipped = true;
+                        largeSampleCount = 0;
+                    }
+                    
                 }
-
-                // clear the read count
+                
                 samplesRead = 0;    
             }    
         }
@@ -795,30 +943,449 @@ uint8_t pdm_tick(void) {
             // }
             NRF_LOG_INFO("Logged %d samples", largeSampleCount);
             NRF_LOG_FLUSH();
+            
+            sd_prepare_file();
+            // break into 1024 batches
+            // uint16_t batchSize = 1024;
+            // uint8_t batchesComplete = 0;
+            NRF_LOG_INFO("Writing to SD samples");
+            NRF_LOG_FLUSH();
+            nrf_drv_gpiote_out_clear(LED_1);
+            // for (uint8_t i = 0; i < largeSampleCount; i++) {
+            //     NRF_LOG_RAW_INFO("%d,", largeBuffer[i]);
+            // }
+            // NRF_LOG_RAW_INFO("\n\r");
+
+            // for (uint8_t batch = 0; batch < largeSampleCount / batchSize; batch++) {
+            //     NRF_LOG_INFO("Writing batch %d of %d.", batch, largeSampleCount/batchSize);
+            //     NRF_LOG_FLUSH();
+            //     log_values(&largeBuffer[batch * batchSize], batchSize);
+            //     batchesComplete = batch;
+            // }
+            // log remaining
+            // uint16_t remaining = largeSampleCount - (batchesComplete * batchSize);
+            NRF_LOG_INFO("queued %d values to write", largeSampleCount);
+            NRF_LOG_FLUSH();
+            log_values(&largeBuffer[0], largeSampleCount);
+            nrf_drv_gpiote_out_set(LED_1);
+            NRF_LOG_INFO("Writing to SD complete");
+            NRF_LOG_FLUSH();
+
             // start next recording at 0
+            memcpy(&largeBuffer[0], 0, sizeof(short) * largeSampleCount);
             largeSampleCount = 0;
             micState = MIC_INITIALISED;
             PDM.end();
+            
         }
 
         return 0;
 }
 
+static void fatfs_example(void) {
+    
 
-        //     ret_val = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, size);
-        //     if (ret_val == NRF_SUCCESS)
-        //     {
-        //         ++frame_counter;
-        //     }
-        // }
+    
+
+    
+    
+    NRF_LOG_RAW_INFO("");
+
+    NRF_LOG_INFO("Writing to file " FILE_NAME "...");
+    wait_for_sd_idle();
+    ff_result = f_open(&file, FILE_NAME, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+    if (ff_result != FR_OK)
+    {
+        NRF_LOG_INFO("Unable to open or create file: " FILE_NAME ".");
+        return;
     }
+
+    ff_result = f_write(&file, TEST_STRING, sizeof(TEST_STRING) - 1, (UINT *) &bytes_written);
+    if (ff_result != FR_OK)
+    {
+        NRF_LOG_INFO("Write failed\r\n.");
+    }
+    else
+    {
+        NRF_LOG_INFO("%d bytes written.", bytes_written);
+    }
+
+    (void) f_close(&file);
+    return;
 }
 
 
+char str[9] = "testing\0";
+uint8_t sd_prepare_file(void) {
+    
+    NRF_LOG_INFO("String test '%s', '%s'", str, "StringTest");
+    NRF_LOG_INFO("\r\n Listing directory: /");
+    if (disk_state == STA_NOINIT || disk_state == STA_NODISK) {
+        // retry initialisation
+        if (init_sd() != STATUS_OK) {
+            return 1;
+        }
+    }
+    // initialise filesystem
+    wait_for_sd_idle();
+    ff_result = f_opendir(&dir, "/");
+    if (ff_result)
+    {
+        NRF_LOG_INFO("Directory listing failed!");
+        return 1;
+    }
+    NRF_LOG_INFO("\r\n Listing directory: /");
+    do {
+        ff_result = f_readdir(&dir, &fno);
+        if (ff_result != FR_OK)
+        {
+            NRF_LOG_INFO("Directory read failed.");
+            return 1;
+        }
 
+        if (fno.fname[0])
+        {
+            if (fno.fattrib & AM_DIR)
+            {
+                NRF_LOG_RAW_INFO("   <DIR>   ");
+                log_filename(fno.fname);
+                NRF_LOG_RAW_INFO("\n\r");
+            }
+            else
+            {
+                NRF_LOG_RAW_INFO("%9lu  ", fno.fsize);
+                log_filename(fno.fname);
+                NRF_LOG_RAW_INFO("\n\r");
+            }
+        }
+    }
+    while (fno.fname[0]);
+    // NRF_LOG_RAW_INFO("\n");
+    // attempt to open log folder
+    wait_for_sd_idle();
+    ff_result = f_opendir(&dir, "logs");
+    if (ff_result)
+    {
+        NRF_LOG_INFO("log listing failed! %d.", ff_result);
+        // attempting to create folder
+        ff_result = FR_OK;
+        ff_result = f_mkdir("logs");
+        if (ff_result) {
+            // create failed return
+            NRF_LOG_INFO("log creation failed! %d.", ff_result);
+            return 1; 
+        }
+        // attempt to navigate to directory
+        wait_for_sd_idle();
+        ff_result = f_opendir(&dir, "logs");
+        if (ff_result) {
+            // create failed return
+            NRF_LOG_INFO("log folder operation failed! %d.", ff_result);
+            return 2; 
+        }
+    }
+    NRF_LOG_INFO("\r\n Listing directory: /logs");
+    // also get the largest number and + 1
+    char prefix[4] = "log";
+    char suffix[5] = ".txt";
+    char prefixc[4] = "LOG";
+    char suffixc[5] = ".TXT";
+    char largestFileNumber[4] = "";
+    bool numberFound = false;
+    do
+    {
+        ff_result = f_readdir(&dir, &fno);
+        if (ff_result != FR_OK)
+        {
+            NRF_LOG_INFO("Directory read failed.");
+            return 1;
+        }
 
-/**
- * @}
- */
+        if (fno.fname[0])
+        {
+            // if (fno.fattrib & AM_DIR)
+            // {
+            //     NRF_LOG_RAW_INFO("   <DIR>   ");
+            //     log_filename(fno.fname);
+            //     NRF_LOG_RAW_INFO("\n\r");
+            // }
+            // else
+            // {
+            //     NRF_LOG_RAW_INFO("%9lu  ", fno.fsize);
+            //     log_filename(fno.fname);
+            //     NRF_LOG_RAW_INFO("\n\r");
+            // }
+        }
+        if (fno.fname[0] && !(fno.fattrib & AM_DIR)) {
+            // check that the name matches the prefix and suffix
+            // NRF_LOG_INFO("checking for log file");
+            uint8_t intOkay = 0;
+            if (fno.fname[0] == prefix[0] && fno.fname[1] == prefix[1] && fno.fname[2] == prefix[2]) {
+                intOkay++;
+            }
+            if (fno.fname[6] == suffix[0] && fno.fname[7] == suffix[1] && fno.fname[8] == suffix[2] && fno.fname[9] == suffix[3]) {
+                intOkay++;
+            }
+            if (fno.fname[0] == prefixc[0] && fno.fname[1] == prefixc[1] && fno.fname[2] == prefixc[2]) {
+                intOkay++;
+            }
+            if (fno.fname[6] == suffixc[0] && fno.fname[7] == suffixc[1] && fno.fname[8] == suffixc[2] && fno.fname[9] == suffixc[3]) {
+                intOkay++;
+            }
+            if (intOkay == 2) {
+                // log down number
+                largestFileNumber[0] = fno.fname[3];
+                largestFileNumber[1] = fno.fname[4];
+                largestFileNumber[2] = fno.fname[5];
+                numberFound = true;
+                // NRF_LOG_INFO("found a matching log file");
+
+            }
+        }
+    }
+    while (fno.fname[0]);
+
+    // get the last item in the log folder:
+    if (numberFound) {
+        // get the next largest number and increment it
+        if (bcd_inc(&largestFileNumber[2])) {
+            // overflow occured repeat on the next digit
+            if (bcd_inc(&largestFileNumber[1])) {
+                // overflow occured again repeat on the next digit
+                if (bcd_inc(&largestFileNumber[0])) {
+                    // overflow on hundreds, no files available
+                    return 1;
+                }
+            }    
+        }
+    } else {
+        largestFileNumber[0] = '0';
+        largestFileNumber[1] = '0';
+        largestFileNumber[2] = '0';
+    }
+    // NRF_LOG_INFO("proposed filename: log%c%c%c.txt", largestFileNumber[0], largestFileNumber[1], largestFileNumber[2]);
+        
+    // create a new file handle
+    sprintf(&logFileName[0], "logs/%s%c%c%c%s", prefix, largestFileNumber[0], largestFileNumber[1], largestFileNumber[2], suffix);
+    NRF_LOG_INFO("proposed filename: %s", logFileName);
+    wait_for_sd_idle();
+    ff_result = f_open(&file, logFileName, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+
+    if (ff_result != FR_OK) {
+        NRF_LOG_INFO("Unable to open or create file: log%c%c%c.txt", logFileName[3], logFileName[4], logFileName[5]);
+        return 1;
+    }
+    
+    ff_result = f_write(&file, FILE_HEADER, sizeof(FILE_HEADER) - 1, (UINT *) &bytes_written);
+    if (ff_result != FR_OK) {
+        NRF_LOG_INFO("Write failed\r\n.");
+    }
+    (void) f_close(&file);
+    // file successfully opened
+    sdReady = true;
+    
+
+    return 0;
+}
+
+uint8_t log_values(int16_t* buffer, uint16_t size) {
+    if (!sdReady) {
+        NRF_LOG_INFO("SD not ready");  
+    }
+
+    // for (uint8_t i = 0; i < size; i++) {
+    //     NRF_LOG_RAW_INFO("%d,", buffer[i]);
+        
+    // }
+    // NRF_LOG_RAW_INFO("\n\r");
+    // for (uint8_t i = 0; i < size; i++) {
+    //     NRF_LOG_RAW_INFO("%d,", largeBuffer[i]);
+    // }
+    // NRF_LOG_RAW_INFO("\n\r");
+
+    // uint8_t blockSize = 
+    // memset(&sdLogBuffer[0], '\0', LOG_BUFFER_SIZE);
+    // NRF_LOG_INFO("setting memory");
+    // NRF_LOG_FLUSH();
+    // uint8_t blockSize = 64; // 64 * 7 chars max per value = max of 448 chars 
+    // uint16_t remainingBlocks = size / 16;
+    uint16_t start = 0;
+    wait_for_sd_idle();
+    ff_result = f_open(&file, logFileName, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+    if (ff_result != FR_OK) {
+        NRF_LOG_INFO("Unable to open or create file: log%c%c%c.txt", logFileName[3], logFileName[4], logFileName[5]);
+        return 1;
+    }
+    NRF_LOG_INFO("Opened file");
+    NRF_LOG_FLUSH();
+    // while (remainingBlocks > 0) {
+    //     // also grab the size of the items
+    //     uint16_t len = get_str_size(&buffer[start], blockSize); // + 1 for null terminator 
+    //     // write  values in blocks of 64
+    //     NRF_LOG_INFO("remaining blocks %d", remainingBlocks);
+    //     NRF_LOG_FLUSH();
+    //     sprintf(&sdLogBuffer[0], "\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n"
+    //             "%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d", 
+    //             buffer[start], buffer[start+1], buffer[start+2], buffer[start+3], buffer[start+4], buffer[start+5], buffer[start+6], buffer[start+7], 
+    //             buffer[start+8], buffer[start+9], buffer[start+10], buffer[start+11], buffer[start+12], buffer[start+13], buffer[start+14], buffer[start+15], 
+    //             buffer[start+16], buffer[start+17], buffer[start+18], buffer[start+19], buffer[start+20], buffer[start+21], buffer[start+22], buffer[start+23], 
+    //             buffer[start+24], buffer[start+25], buffer[start+26], buffer[start+27], buffer[start+28], buffer[start+29], buffer[start+30], buffer[start+31], 
+    //             buffer[start+32], buffer[start+33], buffer[start+34], buffer[start+35], buffer[start+36], buffer[start+37], buffer[start+38], buffer[start+39], 
+    //             buffer[start+40], buffer[start+41], buffer[start+42], buffer[start+43], buffer[start+44], buffer[start+45], buffer[start+46], buffer[start+47], 
+    //             buffer[start+48], buffer[start+49], buffer[start+50], buffer[start+51], buffer[start+52], buffer[start+53], buffer[start+54], buffer[start+55], 
+    //             buffer[start+56], buffer[start+57], buffer[start+58], buffer[start+59], buffer[start+60], buffer[start+61], buffer[start+62], buffer[start+63]);
+    //             start += 64;
+    //     ff_result = f_write(&file, &sdLogBuffer[0], len / 2 * sizeof(char), (UINT *) &bytes_written);
+    //     if (ff_result != FR_OK) {
+    //         NRF_LOG_INFO("Write failed\r\n.");
+    //         NRF_LOG_FLUSH();
+    //     }
+    //     NRF_LOG_INFO("log data %s", &sdLogBuffer[0]);
+    //     f_sync(&file);
+    //     // nrfx_systick_delay_ms(50);
+    //     ff_result = f_write(&file, &sdLogBuffer[len / 2], len * sizeof(char), (UINT *) &bytes_written);
+    //     if (ff_result != FR_OK) {
+    //         NRF_LOG_INFO("Write failed\r\n.");
+    //         NRF_LOG_FLUSH();
+    //     }
+    //     f_sync(&file);
+    //     // reset buffer 
+    //     memset(&sdLogBuffer[0], '\0', len); // only need to clean up what was written
+    //     remainingBlocks--;
+    //     // delay
+        
+    // }
+    uint16_t complete = 0;
+    uint8_t syncCount = 0;
+    uint16_t divisor = 640;
+    for (uint16_t i = 0; i < size; i += 64) {
+        // uint16_t len = get_str_size(&buffer[i], blockSize);
+        
+        // sprintf(&sdLogBuffer[0], "\n%d", buffer[i]);
+        // ff_result = f_write(&file, &sdLogBuffer[0], len * sizeof(char),
+        // (UINT *) &bytes_written);
+        short temp[64];
+        memcpy(&temp[0], &buffer[i], sizeof(short) * 64);
+        wait_for_sd_idle();
+        int result = f_printf(&file, 
+                "\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d"
+                "\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d"
+                "\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d"
+                "\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d", 
+                temp[0],temp[1],temp[2],temp[3],temp[4],temp[5],temp[6],temp[7],
+                temp[8],temp[9],temp[10],temp[11],temp[12],temp[13],temp[14],temp[15],
+                temp[16],temp[17],temp[18],temp[19],temp[20],temp[21],temp[22],temp[23],
+                temp[24],temp[25],temp[26],temp[27],temp[28],temp[29],temp[30],temp[31],
+                temp[32],temp[33],temp[34],temp[35],temp[36],temp[37],temp[38],temp[39],
+                temp[40],temp[41],temp[42],temp[43],temp[44],temp[45],temp[46],temp[47],
+                temp[48],temp[49],temp[50],temp[51],temp[52],temp[53],temp[54],temp[55],
+                temp[56],temp[57],temp[58],temp[59],temp[60],temp[61],temp[62],temp[63]);
+        if (result < 0) {
+            NRF_LOG_INFO("Write failed\r\n.");
+            NRF_LOG_FLUSH();
+        }
+        syncCount++;
+        if (syncCount > 200) {
+            syncCount = 0;
+            f_sync(&file);
+        } 
+        if (i % divisor == 0) {
+            NRF_LOG_INFO("progress: %d of %d ", i, size);
+            NRF_LOG_FLUSH();
+        }
+        // memset(&sdLogBuffer[0], '\0', len + 1);
+        complete = i;
+
+    }
+    for (uint16_t i = complete; i < size; i++) {
+        wait_for_sd_idle();
+        int result = f_printf(&file, "\n%d", buffer[i]);
+        if (result < 0) {
+            NRF_LOG_INFO("Write failed\r\n.");
+            NRF_LOG_FLUSH();
+        }        
+    }
+    wait_for_sd_idle();
+    f_sync(&file);
+    // uint16_t len = 0;
+    // uint16_t position = 0;
+    // NRF_LOG_INFO("Finishing up");
+    // NRF_LOG_FLUSH();
+    // // write the last remaining sub-block if necessary
+    // while (start < size) {
+    //     uint16_t temp = get_str_size(&buffer[start], 1); // 1 value at a time
+    //     sprintf(&sdLogBuffer[len], "%d", buffer[start++]);
+    //     len += temp;
+    // }
+    // NRF_LOG_INFO("block final write");
+    // NRF_LOG_FLUSH();
+    // ff_result = f_write(&file, &sdLogBuffer[0], len * sizeof(char), (UINT *) &bytes_written);
+    // // reset buffer 
+    // memset(&sdLogBuffer[0], '\0', len); // only need to clean up what was written
+    
+    if (ff_result != FR_OK)
+    {
+        NRF_LOG_INFO("Write failed\r\n.");
+    }
+    NRF_LOG_INFO("closing file handle");
+    NRF_LOG_FLUSH();
+    (void) f_close(&file);
+    return 0;
+}
+
+uint16_t get_str_size(int16_t* values, uint8_t size) {
+    uint16_t value = 0;
+
+    for (uint8_t i = 0; i < size; i++) {
+        uint8_t count = 2; // 1 digit + newline
+        value = values[i];
+        if (value < 0) {
+            count++; // negative symbol
+            value = value * -1; // invert for character recognition
+        }
+        if (value < 10) {
+            ;;
+        } else if (value < 100) {
+            count++;
+        } else if (value < 1000) {
+            count += 2;
+        } else if (value < 10000) {
+            count += 3;
+        } else {
+            count += 4;
+        }
+        value += count;
+    }
+    return value;
+}
+
+// returns true on overflow
+bool bcd_inc(char* character) {
+    uint8_t value = character[0] - CHAR_OFFSET;
+    if (value == 9) {
+        character[0] = '0';
+        return true;
+    } else {
+        character[0]++;
+        return false;
+    }
+
+}
+
+void log_filename(TCHAR* fname) {
+    NRF_LOG_RAW_INFO("'");
+    for (uint8_t i = 0; i < FILENAME_LEN; i++) {
+        if (fname[i] != '\0') {
+            NRF_LOG_RAW_INFO("%c", fname[i]);
+        }
+    }
+    NRF_LOG_RAW_INFO("'");
+}
+
+void wait_for_sd_idle(void) {
+    while (!app_sdc_idle()) {
+        nrfx_systick_delay_us(10);
+    }
+}
 
 
