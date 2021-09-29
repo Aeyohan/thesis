@@ -36,3 +36,14 @@
 *.bin
 *.hex
 *.map
+
+*.eww
+*.ewd
+*.uvoptx
+*.emsession
+*.uvprojx
+*.emproj
+*.emProject
+*.ifc
+*.icf
+*.in
