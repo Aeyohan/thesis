@@ -239,7 +239,7 @@ LIB_FILES += -lc -lnosys -lm
 
 # Default target - first one defined
 default: nrf52840_xxaa_debug
-	copy /Y C:\Users\Aeyohan\Documents\work\ENGG4811\code\Thesis\thesis\examples\project\open_bootloader\pca10056_usb_debug\armgcc\_build\nrf52840_xxaa_debug.hex C:\Users\Aeyohan\Documents\work\ENGG4811\code\Thesis\thesis\examples\project\open_bootloader\pca10056_usb_debug\armgcc\_build\nrf52840_xxaa_pdm_int.hex
+	copy /Y C:\Users\Aeyohan\Documents\work\ENGG4811\code\Thesis\thesis\examples\project\autoLogger\pca10056_usb_debug\armgcc\_build\nrf52840_xxaa_debug.hex C:\Users\Aeyohan\Documents\work\ENGG4811\code\Thesis\thesis\examples\project\autoLogger\pca10056_usb_debug\armgcc\_build\nrf52840_xxaa_pdm_int.hex
 
 # Print all targets that can be built
 help:

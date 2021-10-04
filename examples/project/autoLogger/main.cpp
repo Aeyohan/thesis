@@ -179,14 +179,17 @@ FRESULT ff_result;
 DSTATUS disk_state = STA_NOINIT;
 bool sdReady = false;
 
-uint8_t fileCounter = 0;
+// uint8_t fileCounter = 0;
 char logFileName[16] = "logs/log000.txt";
 
 char sdLogBuffer[LOG_BUFFER_SIZE];
 bool skipped;
 uint16_t samplesToSkip;
 
+uint16_t mainCounter;
+nrfx_systick_state_t mainTimer;
 
+uint16_t fileCounter = 0;
 
 // ==================
 
@@ -638,7 +641,8 @@ int main(void) {
     }
 
     // sd_prepare_file();
-    
+    mainCounter = 0;
+    nrfx_systick_get(&mainTimer);
 
     while (true) {
         // NRF_LOG_INFO("Logging loop %i.", counter++);
@@ -659,6 +663,23 @@ int main(void) {
             if (ret_val == NRF_SUCCESS)
             {
                 ++frame_counter;
+            }
+        }
+
+        // Update timer and check if a reading is due
+        if (nrfx_systick_test(&mainTimer, DELAY_1_MS * 100)) {
+            mainCounter++;
+            nrfx_systick_get(&mainTimer);
+        }
+        if (!readPending) {
+            // currently delaying, incrememnt counter
+            // nrfx_systick_get(&mainTimer);
+            
+            if (mainCounter >= 300) { // 30 seconds = 30s * 1000ms / 100 = 300
+                // reset counter, 
+                mainCounter = 0;
+                // set recording flag
+                readPending = true;
             }
         }
 
@@ -845,7 +866,7 @@ uint8_t pdm_tick(void) {
             if (nrfx_systick_test(&delayTick, DELAY_1_MS)) {
                 msCount++;
                 nrfx_systick_get(&delayTick);
-                nrf_drv_gpiote_out_toggle(LED_1);
+                nrf_drv_gpiote_out_set(LED_1);
             }
 
             if (msCount > 1500) { // wait 500ms after the button has been pushed
@@ -1177,6 +1198,7 @@ uint8_t sd_prepare_file(void) {
     }
     
     ff_result = f_write(&file, FILE_HEADER, sizeof(FILE_HEADER) - 1, (UINT *) &bytes_written);
+    f_printf(&file,": %d", fileCounter++);   
     if (ff_result != FR_OK) {
         NRF_LOG_INFO("Write failed\r\n.");
     }
