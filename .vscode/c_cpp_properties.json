@@ -19,21 +19,23 @@
             "intelliSenseMode": "windows-msvc-x64"
         },
         {
-            "name": "ARMGCC",
+            "name": "ARMGCC-autolog",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/examples/project/open_bootloader/pca10056_usb_debug/config",
+                "${workspaceFolder}/examples/project/autoLogger/pca10056_usb_debug/config",
                 "${workspaceFolder}/examples/libraries/inc",
                 "${workspaceFolder}/examples/libraries/src",
+                "${workspaceFolder}/examples/libraries/tflite-micro/**",
+                "${workspaceFolder}/examples/libraries/tflite-micro/tensorflow/",
+                "${workspaceFolder}/examples/libraries/tflite-micro/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include/",
+                "${workspaceFolder}/examples/libraries/tflite-micro/tensorflow/lite/micro/tools/make/downloads/flatbuffers",
+                "${workspaceFolder}/examples/libraries/tflite-micro/tensorflow/lite/micro/tools/make/downloads/gemmlowp",
+                "${workspaceFolder}/external/fatfs/port",
                 "${nrfSDK}/components/**",
-                "${nrfSDK}/components",
-                // "${nrfSDK}/components/libraries/experimental_memobj",
                 "${nrfSDK}/components/libraries/experimental_section_vars",
                 "${nrfSDK}/modules/nrfx/mdk",
                 "${nrfSDK}/modules/nrfx/hal",
                 "${nrfSDK}/components/libraries/balloc",
-                // "${nrfSDK}/components/libraries/experimental_log",
-                // "${nrfSDK}/components/libraries/experimental_log/src",
                 "${nrfSDK}/components/libraries/delay",
                 "${nrfSDK}/integration/nrfx",
                 "${nrfSDK}/components/libraries/bsp",
@@ -73,7 +75,11 @@
                 "${nrfSDK}/modules/nrfx/soc/",
                 "${nrfSDK}/modules/nrfx/drivers/**",
                 "${nrfSDK}/external/segger_rtt",
-                "${nrfSDK}/external/utf_converter"
+                "${nrfSDK}/external/utf_converter",
+                "${nrfSDK}/components/toolchain/cmsis/dsp/Include",
+                "${nrfSDK}/components/libraries/block_dev",
+                "${nrfSDK}/components/libraries/block_dev/sdc",
+                "${nrfSDK}/components/libraries/sdcard"
             ],
             "defines": [
                 "_DEBUG",
@@ -86,12 +92,24 @@
                 "NRF52840_XXAA",
                 "DCONFIG_NFCT_PINS_AS_GPIOS",
                 "NRFX_GPIOTE_ENABLED=1",
-                "DNRFX_GPIOTE_ENABLED=1"
+                "DNRFX_GPIOTE_ENABLED=1",
+                "DMICROPY_PY_SENSOR=1",
+                "DNRF52840",
+                "DNRF52_SERIES",
+                "DMICROPY_PY_SENSOR=1",
+                "__fp16=float"
             ],
             "compilerPath": "C:\\Program Files (x86)\\GNU Tools ARM Embedded\\9 2019-q4-major\\bin\\arm-none-eabi-gcc.exe",
             "cStandard": "c11",
             "cppStandard": "c++17",
-            "intelliSenseMode": "clang-x64"
+            "compilerArgs": [
+                "-mcpu=cortex-m4",
+                "-march=armv7+fp",
+                "-mfpu=fpv4-sp-d16",
+                "-mfloat-abi=hard",
+                "-mfp16-format=ieee"
+            ],
+            "intelliSenseMode": "gcc-arm"
         }
     ],
     "version": 4

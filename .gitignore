@@ -48,4 +48,5 @@
 *.icf
 *.in
 
-examples\libraries\src\omv*
+
+examples/libraries/src/omv
